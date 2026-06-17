@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import axios from 'axios'
+import api from "../api/axios";
 import { useAuth } from '../context/AuthContext'
 
 function Login() {
@@ -13,7 +13,7 @@ function Login() {
     setLoading(true)
     setError('')
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/login', form)
+      const res = await api.post('/auth/login', form)
       login(res.data.user, res.data.token)
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong')
