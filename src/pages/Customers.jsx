@@ -106,8 +106,9 @@ function Customers() {
         assignedTo: assignTo
       })
       setCustomers(customers.map(c =>
-        c._id === selectedCustomer._id ? { ...c, assignedTo: res.data.assignedTo } : c
+        c._id === selectedCustomer._id ? { ...c, assignedTo: res.data.assignedTo, assignedBy: res.data.assignedBy } : c
       ))
+      setSelectedCustomer(res.data)
       setShowAssignModal(false)
       setAssignTo('')
     } catch (err) {
@@ -371,6 +372,7 @@ function Customers() {
                     { label: 'Address', value: selectedCustomer.address || 'N/A' },
                     { label: 'Added By', value: selectedCustomer.addedBy?.name || 'N/A' },
                     { label: 'Assigned To', value: selectedCustomer.assignedTo?.name || 'Unassigned' },
+                    { label: 'Assigned From', value: selectedCustomer.assignedBy?.name || 'N/A' },
                     { label: 'Date Added', value: new Date(selectedCustomer.createdAt).toLocaleDateString() },
                   ].map(item => (
                     <div key={item.label} className="flex justify-between items-center py-2 border-b border-gray-50 dark:border-gray-700/50">
