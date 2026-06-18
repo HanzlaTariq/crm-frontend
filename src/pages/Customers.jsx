@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import { useAuth } from '../context/AuthContext'
 
 const statusColors = {
   new: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
@@ -11,19 +12,63 @@ const statusColors = {
 }
 
 function Customers() {
+  const { user } = useAuth()
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
+  const [showAssignModal, setShowAssignModal] = useState(false)
   const [selectedCustomer, setSelectedCustomer] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
   const [editForm, setEditForm] = useState({ name: '', phone: '', email: '', address: '', notes: '', status: '' })
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({
-    name: '', phone: '', email: '', address: '', notes: ''
-  })
+  const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', notes: '' })
   const [submitting, setSubmitting] = useState(false)
+  const [teamMembers, setTeamMembers] = useState([])
+  const [assignTo, setAssignTo] = useState('')
+  const [assigning, setAssigning] = useState(false)
+
+  useEffect(() => {
+    fetchCustomers()
+    fetchTeamMembers()
+  }, [])
+
+  const fetchCustomers = async () => {
+    try {
+      const res = await api.get('/customers')
+      setCustomers(res.data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchTeamMembers = async () => {
+    try {
+      const res = await api.get('/users')
+      // Admin filter out karo — admin ko assign nahi kar sakte
+      setTeamMembers(res.data.filter(u => u.role !== 'admin'))
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleSubmit = async () => {
+    if (!form.name || !form.phone) return
+    setSubmitting(true)
+    try {
+      const res = await api.post('/customers', form)
+      setCustomers([res.data, ...customers])
+      setForm({ name: '', phone: '', email: '', address: '', notes: '' })
+      setShowModal(false)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const startEditing = () => {
     if (!selectedCustomer) return
@@ -43,8 +88,7 @@ function Customers() {
     setSubmitting(true)
     try {
       const res = await api.put(`/customers/${selectedCustomer._id}`, editForm)
-      // update local list
-      setCustomers((prev) => prev.map(c => (c._id === res.data._id ? res.data : c)))
+      setCustomers(prev => prev.map(c => c._id === res.data._id ? res.data : c))
       setSelectedCustomer(res.data)
       setIsEditing(false)
     } catch (err) {
@@ -54,38 +98,40 @@ function Customers() {
     }
   }
 
-  const cancelEdit = () => {
-    setIsEditing(false)
-  }
-
-  useEffect(() => {
-    fetchCustomers()
-  }, [])
-
-  const fetchCustomers = async () => {
+  const handleAssign = async () => {
+    if (!assignTo) return
+    setAssigning(true)
     try {
-      const res = await api.get('/customers')
-      setCustomers(res.data)
+      const res = await api.put(`/customers/${selectedCustomer._id}/assign`, {
+        assignedTo: assignTo
+      })
+      setCustomers(customers.map(c =>
+        c._id === selectedCustomer._id ? { ...c, assignedTo: res.data.assignedTo } : c
+      ))
+      setShowAssignModal(false)
+      setAssignTo('')
     } catch (err) {
       console.error(err)
     } finally {
-      setLoading(false)
+      setAssigning(false)
     }
   }
 
-  const handleSubmit = async () => {
-    if (!form.name || !form.phone) return
-    setSubmitting(true)
-    try {
-      const res = await api.post('/customers', form)
-      setCustomers([res.data, ...customers])
-      setForm({ name: '', phone: '', email: '', address: '', notes: '' })
-      setShowModal(false)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setSubmitting(false)
+  // Role ke hisaab se assignable members filter karo
+  const getAssignableMembers = () => {
+    if (user?.role === 'admin') {
+      // Admin — sab ko assign kar sakta hai (admin chhod ke)
+      return teamMembers
     }
+    if (user?.role === 'manager') {
+      // Manager — dusre managers + jmanager + telecom + salesperson
+      return teamMembers.filter(m => m.role !== 'admin')
+    }
+    if (user?.role === 'jmanager') {
+      // J.Manager — sirf apne neeche wale
+      return teamMembers.filter(m => ['telecom', 'salesperson'].includes(m.role))
+    }
+    return []
   }
 
   const filtered = customers.filter(c => {
@@ -94,6 +140,8 @@ function Customers() {
       c.phone.includes(search)
     return matchFilter && matchSearch
   })
+
+  const canAssign = ['admin', 'manager', 'jmanager'].includes(user?.role)
 
   return (
     <div>
@@ -149,6 +197,7 @@ function Customers() {
                 <th className="px-6 py-4 text-left">Phone</th>
                 <th className="px-6 py-4 text-left">Status</th>
                 <th className="px-6 py-4 text-left">Added By</th>
+                <th className="px-6 py-4 text-left">Assigned To</th>
                 <th className="px-6 py-4 text-left">Date</th>
                 <th className="px-6 py-4 text-left">Action</th>
               </tr>
@@ -166,19 +215,41 @@ function Customers() {
                   <td className="px-6 py-4 text-gray-500 dark:text-gray-400 capitalize">
                     {c.addedBy?.name || 'N/A'}
                   </td>
+                  <td className="px-6 py-4 text-gray-500 dark:text-gray-400 capitalize">
+                    {c.assignedTo?.name
+                      ? <span className="px-2 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-xs">
+                          {c.assignedTo.name}
+                        </span>
+                      : <span className="text-gray-300 dark:text-gray-600">Unassigned</span>
+                    }
+                  </td>
                   <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
                     {new Date(c.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-4">
-                    <button 
-                      onClick={() => {
-                        setSelectedCustomer(c)
-                        setShowDetailModal(true)
-                      }}
-                      className="text-blue-500 hover:text-blue-700 font-medium transition"
-                    >
-                      View
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => {
+                          setSelectedCustomer(c)
+                          setShowDetailModal(true)
+                        }}
+                        className="text-blue-500 hover:text-blue-700 font-medium transition"
+                      >
+                        View
+                      </button>
+                      {canAssign && (
+                        <button
+                          onClick={() => {
+                            setSelectedCustomer(c)
+                            setAssignTo(c.assignedTo?._id || '')
+                            setShowAssignModal(true)
+                          }}
+                          className="text-green-500 hover:text-green-700 font-medium transition"
+                        >
+                          Assign
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -193,12 +264,8 @@ function Customers() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-xl font-bold text-gray-800 dark:text-white">Add Customer</h3>
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl"
-              >✕</button>
+              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">✕</button>
             </div>
-
             <div className="space-y-3">
               {[
                 { key: 'name', label: 'Name *', placeholder: 'Full name' },
@@ -207,9 +274,7 @@ function Customers() {
                 { key: 'address', label: 'Address', placeholder: 'City, Country' },
               ].map(field => (
                 <div key={field.key}>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    {field.label}
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{field.label}</label>
                   <input
                     type="text"
                     placeholder={field.placeholder}
@@ -219,11 +284,8 @@ function Customers() {
                   />
                 </div>
               ))}
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Notes
-                </label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
                 <textarea
                   placeholder="Any additional notes..."
                   value={form.notes}
@@ -233,19 +295,9 @@ function Customers() {
                 />
               </div>
             </div>
-
             <div className="flex gap-3 mt-5">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition disabled:opacity-50"
-              >
+              <button onClick={() => setShowModal(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">Cancel</button>
+              <button onClick={handleSubmit} disabled={submitting} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition disabled:opacity-50">
                 {submitting ? 'Adding...' : 'Add Customer'}
               </button>
             </div>
@@ -259,10 +311,7 @@ function Customers() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-xl font-bold text-gray-800 dark:text-white">Customer Details</h3>
-              <button
-                onClick={() => setShowDetailModal(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl"
-              >✕</button>
+              <button onClick={() => { setShowDetailModal(false); setIsEditing(false) }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl">✕</button>
             </div>
 
             {isEditing ? (
@@ -274,9 +323,7 @@ function Customers() {
                   { key: 'address', label: 'Address', placeholder: 'City, Country' },
                 ].map(field => (
                   <div key={field.key}>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      {field.label}
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{field.label}</label>
                     <input
                       type="text"
                       placeholder={field.placeholder}
@@ -286,7 +333,6 @@ function Customers() {
                     />
                   </div>
                 ))}
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
                   <select
@@ -299,7 +345,6 @@ function Customers() {
                     ))}
                   </select>
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
                   <textarea
@@ -309,80 +354,94 @@ function Customers() {
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   />
                 </div>
-
                 <div className="flex gap-3 mt-3">
-                  <button
-                    onClick={cancelEdit}
-                    className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={submitting}
-                    className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium transition disabled:opacity-50"
-                  >
+                  <button onClick={() => setIsEditing(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">Cancel</button>
+                  <button onClick={handleSave} disabled={submitting} className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium transition disabled:opacity-50">
                     {submitting ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
               </div>
             ) : (
               <>
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Name</label>
-                    <p className="text-gray-800 dark:text-white font-medium">{selectedCustomer.name}</p>
+                <div className="space-y-3">
+                  {[
+                    { label: 'Name', value: selectedCustomer.name },
+                    { label: 'Phone', value: selectedCustomer.phone },
+                    { label: 'Email', value: selectedCustomer.email || 'N/A' },
+                    { label: 'Address', value: selectedCustomer.address || 'N/A' },
+                    { label: 'Added By', value: selectedCustomer.addedBy?.name || 'N/A' },
+                    { label: 'Assigned To', value: selectedCustomer.assignedTo?.name || 'Unassigned' },
+                    { label: 'Date Added', value: new Date(selectedCustomer.createdAt).toLocaleDateString() },
+                  ].map(item => (
+                    <div key={item.label} className="flex justify-between items-center py-2 border-b border-gray-50 dark:border-gray-700/50">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">{item.label}</span>
+                      <span className="text-sm font-medium text-gray-800 dark:text-white">{item.value}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center py-2">
+                    <span className="text-sm text-gray-500 dark:text-gray-400">Status</span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${statusColors[selectedCustomer.status]}`}>
+                      {selectedCustomer.status}
+                    </span>
                   </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Phone</label>
-                    <p className="text-gray-800 dark:text-white">{selectedCustomer.phone}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Email</label>
-                    <p className="text-gray-800 dark:text-white">{selectedCustomer.email || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Address</label>
-                    <p className="text-gray-800 dark:text-white">{selectedCustomer.address || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Status</label>
-                    <p>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${statusColors[selectedCustomer.status]}`}>
-                        {selectedCustomer.status}
-                      </span>
-                    </p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Notes</label>
-                    <p className="text-gray-800 dark:text-white">{selectedCustomer.notes || 'No notes'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Added By</label>
-                    <p className="text-gray-800 dark:text-white">{selectedCustomer.addedBy?.name || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-gray-600 dark:text-gray-400">Date Added</label>
-                    <p className="text-gray-800 dark:text-white">{new Date(selectedCustomer.createdAt).toLocaleDateString()}</p>
-                  </div>
+                  {selectedCustomer.notes && (
+                    <div className="py-2">
+                      <span className="text-sm text-gray-500 dark:text-gray-400">Notes</span>
+                      <p className="text-sm text-gray-800 dark:text-white mt-1">{selectedCustomer.notes}</p>
+                    </div>
+                  )}
                 </div>
-
                 <div className="mt-5 flex gap-3">
-                  <button
-                    onClick={() => setShowDetailModal(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-                  >
-                    Close
-                  </button>
-                  <button
-                    onClick={startEditing}
-                    className="flex-1 py-2.5 rounded-xl bg-yellow-600 hover:bg-yellow-700 text-white font-medium transition"
-                  >
-                    Edit
-                  </button>
+                  <button onClick={() => { setShowDetailModal(false); setIsEditing(false) }} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">Close</button>
+                  <button onClick={startEditing} className="flex-1 py-2.5 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white font-medium transition">Edit</button>
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Assign Modal */}
+      {showAssignModal && selectedCustomer && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xl font-bold text-gray-800 dark:text-white">Assign Customer</h3>
+              <button onClick={() => setShowAssignModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+            </div>
+
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Assigning: <span className="font-semibold text-gray-800 dark:text-white">{selectedCustomer.name}</span>
+            </p>
+
+            {selectedCustomer.assignedTo?.name && (
+              <p className="text-xs text-blue-500 mb-3">
+                Currently assigned to: <span className="font-medium">{selectedCustomer.assignedTo.name}</span>
+              </p>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Assign To</label>
+              <select
+                value={assignTo}
+                onChange={(e) => setAssignTo(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">— Select Member —</option>
+                {getAssignableMembers().map(m => (
+                  <option key={m._id} value={m._id}>
+                    {m.name} ({m.role === 'jmanager' ? 'J. Manager' : m.role})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setShowAssignModal(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">Cancel</button>
+              <button onClick={handleAssign} disabled={assigning || !assignTo} className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium transition disabled:opacity-50">
+                {assigning ? 'Assigning...' : 'Assign ✓'}
+              </button>
+            </div>
           </div>
         </div>
       )}

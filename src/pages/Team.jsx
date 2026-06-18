@@ -18,6 +18,7 @@ function Team() {
   const [assignable, setAssignable] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -67,14 +68,6 @@ function Team() {
     }
   };
 
-  // Group members by role for better display
-  const grouped = {
-    manager: members.filter(m => m.role === 'manager'),
-    jmanager: members.filter(m => m.role === 'jmanager'),
-    telecom: members.filter(m => m.role === 'telecom'),
-    salesperson: members.filter(m => m.role === 'salesperson'),
-  };
-
   const roleLabels = {
     manager: '👔 Managers',
     jmanager: '🧑‍💼 Junior Managers',
@@ -82,24 +75,50 @@ function Team() {
     salesperson: '💼 Salespersons',
   };
 
+  const filteredMembers = members.filter((member) => {
+    const term = search.toLowerCase().trim()
+    if (!term) return true
+    return (
+      member.name.toLowerCase().includes(term) ||
+      member.email.toLowerCase().includes(term) ||
+      member.role.toLowerCase().includes(term)
+    )
+  })
+
+  const grouped = {
+    manager: filteredMembers.filter((m) => m.role === 'manager'),
+    jmanager: filteredMembers.filter((m) => m.role === 'jmanager'),
+    telecom: filteredMembers.filter((m) => m.role === 'telecom'),
+    salesperson: filteredMembers.filter((m) => m.role === 'salesperson'),
+  };
+
   return (
     <div>
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between mb-6">
         <div>
           <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Team</h2>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            {members.length} member{members.length !== 1 ? 's' : ''} in your team
+            {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''} shown
           </p>
         </div>
-        {['admin', 'manager'].includes(user?.role) && (
-          <button
-            onClick={() => setShowModal(true)}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition"
-          >
-            + Add Member
-          </button>
-        )}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            type="text"
+            placeholder="Search members, email or role..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full sm:w-80 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {['admin', 'manager'].includes(user?.role) && (
+            <button
+              onClick={() => setShowModal(true)}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition"
+            >
+              + Add Member
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
