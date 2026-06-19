@@ -15,14 +15,22 @@ function Team() {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [assignable, setAssignable] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [editingMember, setEditingMember] = useState(null);
   const [form, setForm] = useState({
     name: "",
     email: "",
     password: "",
+    role: "salesperson",
+    managerId: "",
+  });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    email: "",
     role: "salesperson",
     managerId: "",
   });
@@ -61,6 +69,33 @@ function Team() {
       setMembers([res.data.user, ...members]);
       setForm({ name: "", email: "", password: "", role: "salesperson", managerId: "" });
       setShowModal(false);
+    } catch (err) {
+      setError(err.response?.data?.message || "Something went wrong");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const startEditing = (member) => {
+    setEditingMember(member);
+    setEditForm({
+      name: member.name,
+      email: member.email,
+      role: member.role,
+      managerId: member.manager?._id || "",
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!editForm.name || !editForm.email) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const res = await api.put(`/auth/user/${editingMember._id}`, editForm);
+      setMembers(members.map(m => m._id === editingMember._id ? res.data : m));
+      setShowEditModal(false);
+      setEditingMember(null);
     } catch (err) {
       setError(err.response?.data?.message || "Something went wrong");
     } finally {
@@ -175,6 +210,15 @@ function Team() {
                       <p className="text-xs text-gray-300 dark:text-gray-600 mt-2">
                         Joined {new Date(m.createdAt).toLocaleDateString()}
                       </p>
+
+                      {user?.role === 'admin' && (
+                        <button
+                          onClick={() => startEditing(m)}
+                          className="mt-4 w-full px-3 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-sm font-medium rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition"
+                        >
+                          Edit
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -236,32 +280,6 @@ function Team() {
                   <option value="salesperson">Salesperson</option>
                 </select>
               </div>
-
-              {/* Reports To — only show if assignable exists and role needs a manager. Hidden for admin users */}
-              {assignable.length > 0 && form.role !== 'manager' && user?.role !== 'admin' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Reports To *
-                  </label>
-                  <select
-                    value={form.managerId}
-                    onChange={(e) => setForm({ ...form, managerId: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">— Select Manager —</option>
-                    {assignable
-                      .filter(u => {
-                        if (form.role === 'jmanager') return u.role === 'manager'
-                        return u.role === 'jmanager' || u.role === 'manager'
-                      })
-                      .map((u) => (
-                        <option key={u._id} value={u._id}>
-                          {u.name} ({u.role === 'jmanager' ? 'J. Manager' : u.role})
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              )}
             </div>
 
             <div className="flex gap-3 mt-5">
@@ -275,6 +293,80 @@ function Team() {
                 className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition disabled:opacity-50"
               >
                 {submitting ? "Adding..." : "Add Member"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Member Modal */}
+      {showEditModal && editingMember && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xl font-bold text-gray-800 dark:text-white">Edit Team Member</h3>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xl"
+              >✕</button>
+            </div>
+
+            {error && (
+              <div className="bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-4 py-3 rounded-lg mb-4 text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  placeholder="John Doe"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email *</label>
+                <input
+                  type="email"
+                  placeholder="john@company.com"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Role */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Role</label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value, managerId: "" })}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="manager">Manager</option>
+                  <option value="jmanager">Junior Manager</option>
+                  <option value="telecom">Telecom</option>
+                  <option value="salesperson">Salesperson</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+              >Cancel</button>
+              <button
+                onClick={handleEditSubmit}
+                disabled={submitting}
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition disabled:opacity-50"
+              >
+                {submitting ? "Saving..." : "Save Changes"}
               </button>
             </div>
           </div>
