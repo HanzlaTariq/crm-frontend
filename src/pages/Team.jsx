@@ -237,8 +237,8 @@ function Team() {
                 </select>
               </div>
 
-              {/* Reports To — only show if assignable exists and role needs a manager */}
-              {assignable.length > 0 && form.role !== 'manager' && (
+              {/* Reports To — only show if assignable exists and role needs a manager. Hidden for admin users */}
+              {assignable.length > 0 && form.role !== 'manager' && user?.role !== 'admin' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Reports To *

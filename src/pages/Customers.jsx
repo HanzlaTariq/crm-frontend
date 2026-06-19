@@ -118,19 +118,19 @@ function Customers() {
     }
   }
 
-  // Role ke hisaab se assignable members filter karo
+  // Flat hierarchy — only admin has team (everyone)
   const getAssignableMembers = () => {
     if (user?.role === 'admin') {
-      // Admin — sab ko assign kar sakta hai (admin chhod ke)
       return teamMembers
     }
     if (user?.role === 'manager') {
-      // Manager — dusre managers + jmanager + telecom + salesperson
-      return teamMembers.filter(m => m.role !== 'admin')
+      return teamMembers.filter(m => ['manager', 'jmanager', 'telecom', 'salesperson'].includes(m.role))
     }
     if (user?.role === 'jmanager') {
-      // J.Manager — sirf apne neeche wale
-      return teamMembers.filter(m => ['telecom', 'salesperson'].includes(m.role))
+      return teamMembers.filter(m => ['jmanager', 'telecom', 'salesperson'].includes(m.role))
+    }
+    if (['telecom', 'salesperson'].includes(user?.role)) {
+      return teamMembers.filter(m => ['telecom', 'salesperson', 'manager', 'jmanager'].includes(m.role))
     }
     return []
   }
@@ -142,7 +142,8 @@ function Customers() {
     return matchFilter && matchSearch
   })
 
-  const canAssign = ['admin', 'manager', 'jmanager'].includes(user?.role)
+  const canAssign = ['admin', 'manager', 'jmanager', 'telecom', 'salesperson'].includes(user?.role)
+  const canAddCustomer = user?.role !== 'admin'
 
   return (
     <div>
@@ -152,12 +153,14 @@ function Customers() {
           <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Customers</h2>
           <p className="text-gray-500 dark:text-gray-400 mt-1">Manage your leads & customers</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition"
-        >
-          + Add Customer
-        </button>
+        {canAddCustomer && (
+          <button
+            onClick={() => setShowModal(true)}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition"
+          >
+            + Add Customer
+          </button>
+        )}
       </div>
 
       {/* Search + Filter */}

@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'https://crm-backend-zeta-five.vercel.app/api',
+  baseURL: 'http://localhost:5000/api',
 })
 
 api.interceptors.request.use((config) => {
@@ -12,5 +12,5 @@ api.interceptors.request.use((config) => {
 
 export default api
 
-
+// https://crm-backend-zeta-five.vercel.app/api
 
