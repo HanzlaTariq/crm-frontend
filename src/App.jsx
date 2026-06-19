@@ -53,7 +53,7 @@ function App() {
             <Route
               path="/team"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute allowedRoles={['admin']}>
                   <Layout dark={dark} setDark={setDark}>
                     <Team />
                   </Layout>

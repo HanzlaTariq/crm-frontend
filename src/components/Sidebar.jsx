@@ -5,7 +5,7 @@ const navItems = [
   { path: '/dashboard', label: '🏠 Dashboard', roles: ['admin', 'manager', 'jmanager', 'telecom', 'salesperson'] },
   { path: '/customers', label: '👥 Customers', roles: ['admin', 'manager', 'jmanager', 'telecom', 'salesperson'] },
   { path: '/followups', label: '📞 Follow Ups', roles: ['admin', 'manager', 'jmanager', 'telecom', 'salesperson'] },
-  { path: '/team', label: '👨‍💼 Team', roles: ['admin', 'manager'] },
+  { path: '/team', label: '👨‍💼 Team', roles: ['admin'] },
 ]
 
 function Sidebar({ dark, setDark }) {
