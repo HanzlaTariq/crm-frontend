@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
 import { useAuth } from '../context/AuthContext'
-import { Plus, Search, X, UserPlus, Pencil, Eye } from 'lucide-react'
+import { Plus, Search, X, UserPlus, Pencil, Eye, Lock, Archive } from 'lucide-react'
 
 const statusColors = {
   new: 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300',
@@ -11,6 +11,8 @@ const statusColors = {
   sale: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400',
   lost: 'bg-slate-200 text-slate-500 dark:bg-slate-600/20 dark:text-slate-400',
 }
+
+const closedBadgeCls = 'bg-ink-950 text-white dark:bg-white/10 dark:text-slate-200'
 
 const inputCls = "w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 bg-slate-50 dark:bg-ink-800 text-ink-950 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition"
 const labelCls = "block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5"
@@ -33,11 +35,23 @@ function Customers() {
   const [assignTo, setAssignTo] = useState('')
   const [assignNote, setAssignNote] = useState('')
   const [assigning, setAssigning] = useState(false)
+  const [showCloseModal, setShowCloseModal] = useState(false)
+  const [closeNote, setCloseNote] = useState('')
+  const [closing, setClosing] = useState(false)
+  const [viewMode, setViewMode] = useState('active') // 'active' | 'closed' (closed sirf admin ke liye)
+  const [closedCustomers, setClosedCustomers] = useState([])
+  const [closedLoading, setClosedLoading] = useState(false)
 
   useEffect(() => {
     fetchCustomers()
     fetchTeamMembers()
   }, [])
+
+  useEffect(() => {
+    if (viewMode === 'closed' && user?.role === 'admin') {
+      fetchClosedCustomers()
+    }
+  }, [viewMode])
 
   const fetchCustomers = async () => {
     try {
@@ -47,6 +61,18 @@ function Customers() {
       console.error(err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchClosedCustomers = async () => {
+    setClosedLoading(true)
+    try {
+      const res = await api.get('/customers/closed/all')
+      setClosedCustomers(res.data)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setClosedLoading(false)
     }
   }
 
@@ -125,6 +151,24 @@ function Customers() {
     }
   }
 
+  const handleClose = async () => {
+    if (!selectedCustomer) return
+    setClosing(true)
+    try {
+      const res = await api.put(`/customers/${selectedCustomer._id}/close`, { note: closeNote })
+      // Ab yeh customer "close done" hai — apni list se hata do (admin ki normal list bhi sirf open dikhati hai)
+      setCustomers(prev => prev.filter(c => c._id !== selectedCustomer._id))
+      setSelectedCustomer(res.data)
+      setShowCloseModal(false)
+      setShowDetailModal(false)
+      setCloseNote('')
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setClosing(false)
+    }
+  }
+
   // Flat hierarchy — only admin has team (everyone)
   const getAssignableMembers = () => {
     if (user?.role === 'admin') {
@@ -151,6 +195,8 @@ function Customers() {
 
   const canAssign = ['admin', 'manager', 'jmanager', 'telecom', 'salesperson'].includes(user?.role)
   const canAddCustomer = user?.role !== 'admin'
+  // Close button sirf us ke pas jise customer assign hua ho, ya admin ke pas
+  const canClose = (c) => !c.closed && (user?.role === 'admin' || String(c.assignedTo?._id) === String(user?.id))
 
   return (
     <div>
@@ -171,36 +217,103 @@ function Customers() {
         )}
       </div>
 
-      {/* Search + Filter */}
-      <div className="flex flex-wrap gap-2.5 mb-6">
-        <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" strokeWidth={1.75} />
-          <input
-            type="text"
-            placeholder="Search name or phone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 bg-white dark:bg-ink-800 text-ink-950 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 w-full sm:w-64"
-          />
+      {/* Admin — Active / Closed toggle */}
+      {user?.role === 'admin' && (
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setViewMode('active')}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition ${
+              viewMode === 'active'
+                ? 'bg-ink-950 dark:bg-brand-500 text-white dark:text-ink-950'
+                : 'bg-white dark:bg-ink-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-ink-600 hover:bg-slate-50 dark:hover:bg-ink-700'
+            }`}
+          >
+            Active
+          </button>
+          <button
+            onClick={() => setViewMode('closed')}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition ${
+              viewMode === 'closed'
+                ? 'bg-ink-950 dark:bg-brand-500 text-white dark:text-ink-950'
+                : 'bg-white dark:bg-ink-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-ink-600 hover:bg-slate-50 dark:hover:bg-ink-700'
+            }`}
+          >
+            <Archive className="w-3.5 h-3.5" /> Closed ({closedCustomers.length || ''})
+          </button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {['all', 'new', 'interested', 'not-interested', 'followup', 'sale', 'lost'].map(s => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium capitalize transition ${
-                filter === s
-                  ? 'bg-ink-950 dark:bg-brand-500 text-white dark:text-ink-950'
-                  : 'bg-white dark:bg-ink-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-ink-600 hover:bg-slate-50 dark:hover:bg-ink-700'
-              }`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
 
-      {/* Table — desktop */}
+      {/* Search + Filter — sirf active view me */}
+      {viewMode === 'active' && (
+        <div className="flex flex-wrap gap-2.5 mb-6">
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" strokeWidth={1.75} />
+            <input
+              type="text"
+              placeholder="Search name or phone..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 bg-white dark:bg-ink-800 text-ink-950 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 w-full sm:w-64"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {['all', 'new', 'interested', 'not-interested', 'followup', 'sale', 'lost'].map(s => (
+              <button
+                key={s}
+                onClick={() => setFilter(s)}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium capitalize transition ${
+                  filter === s
+                    ? 'bg-ink-950 dark:bg-brand-500 text-white dark:text-ink-950'
+                    : 'bg-white dark:bg-ink-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-ink-600 hover:bg-slate-50 dark:hover:bg-ink-700'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Closed table — admin only, full close detail */}
+      {viewMode === 'closed' && user?.role === 'admin' && (
+        <div className="hidden md:block bg-white dark:bg-ink-800 rounded-xl shadow-panel border border-slate-100 dark:border-white/5 overflow-hidden mb-6">
+          {closedLoading ? (
+            <div className="p-8 text-center text-slate-400 text-sm">Loading...</div>
+          ) : closedCustomers.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 text-sm">No closed customers yet</div>
+          ) : (
+            <div className="overflow-x-auto scrollbar-thin">
+              <table className="w-full text-sm min-w-[820px]">
+                <thead className="bg-slate-50 dark:bg-white/[0.03] text-slate-500 dark:text-slate-400 uppercase text-[11px] tracking-wide">
+                  <tr>
+                    <th className="px-6 py-3.5 text-left font-medium">Name</th>
+                    <th className="px-6 py-3.5 text-left font-medium">Phone</th>
+                    <th className="px-6 py-3.5 text-left font-medium">Assigned To</th>
+                    <th className="px-6 py-3.5 text-left font-medium">Closed By</th>
+                    <th className="px-6 py-3.5 text-left font-medium">Closed On</th>
+                    <th className="px-6 py-3.5 text-left font-medium">Note</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                  {closedCustomers.map(c => (
+                    <tr key={c._id} className="hover:bg-slate-50 dark:hover:bg-white/[0.03] transition">
+                      <td className="px-6 py-3.5 font-medium text-ink-950 dark:text-white">{c.name}</td>
+                      <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400 font-mono text-xs">{c.phone}</td>
+                      <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400 capitalize">{c.assignedTo?.name || 'N/A'}</td>
+                      <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400 capitalize">{c.closedBy?.name || 'N/A'}</td>
+                      <td className="px-6 py-3.5 text-slate-400 text-xs font-mono">{c.closedAt ? new Date(c.closedAt).toLocaleString() : 'N/A'}</td>
+                      <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400 max-w-[220px] truncate">{c.closeNote || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Table — desktop (active) */}
+      {viewMode === 'active' && (
       <div className="hidden md:block bg-white dark:bg-ink-800 rounded-xl shadow-panel border border-slate-100 dark:border-white/5 overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-slate-400 text-sm">Loading...</div>
@@ -226,9 +339,12 @@ function Customers() {
                     <td className="px-6 py-3.5 font-medium text-ink-950 dark:text-white">{c.name}</td>
                     <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400 font-mono text-xs">{c.phone}</td>
                     <td className="px-6 py-3.5">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusColors[c.status]}`}>
-                        {c.status}
-                      </span>
+                      {c.closed
+                        ? <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${closedBadgeCls}`}>Close Done</span>
+                        : <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusColors[c.status]}`}>
+                            {c.status}
+                          </span>
+                      }
                     </td>
                     <td className="px-6 py-3.5 text-slate-500 dark:text-slate-400 capitalize">
                       {c.addedBy?.name || 'N/A'}
@@ -255,7 +371,7 @@ function Customers() {
                         >
                           <Eye className="w-3.5 h-3.5" /> View
                         </button>
-                        {canAssign && (
+                        {canAssign && !c.closed && (
                           <button
                             onClick={() => {
                               setSelectedCustomer(c)
@@ -267,6 +383,18 @@ function Customers() {
                             <UserPlus className="w-3.5 h-3.5" /> Assign
                           </button>
                         )}
+                        {canClose(c) && (
+                          <button
+                            onClick={() => {
+                              setSelectedCustomer(c)
+                              setCloseNote('')
+                              setShowCloseModal(true)
+                            }}
+                            className="text-rose-600 hover:text-rose-700 dark:text-rose-400 font-medium transition text-xs inline-flex items-center gap-1"
+                          >
+                            <Lock className="w-3.5 h-3.5" /> Close
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -276,8 +404,10 @@ function Customers() {
           </div>
         )}
       </div>
+      )}
 
-      {/* Cards — mobile */}
+      {/* Cards — mobile (active) */}
+      {viewMode === 'active' && (
       <div className="md:hidden space-y-3">
         {loading ? (
           <div className="p-8 text-center text-slate-400 text-sm bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5">Loading...</div>
@@ -290,9 +420,12 @@ function Customers() {
                 <p className="font-medium text-ink-950 dark:text-white truncate">{c.name}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">{c.phone}</p>
               </div>
-              <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusColors[c.status]}`}>
-                {c.status}
-              </span>
+              {c.closed
+                ? <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium ${closedBadgeCls}`}>Close Done</span>
+                : <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-medium capitalize ${statusColors[c.status]}`}>
+                    {c.status}
+                  </span>
+              }
             </div>
             <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
               <span>
@@ -309,7 +442,7 @@ function Customers() {
               >
                 <Eye className="w-3.5 h-3.5" /> View
               </button>
-              {canAssign && (
+              {canAssign && !c.closed && (
                 <button
                   onClick={() => { setSelectedCustomer(c); setAssignTo(c.assignedTo?._id || ''); setShowAssignModal(true) }}
                   className="text-emerald-600 dark:text-emerald-400 font-medium text-xs inline-flex items-center gap-1"
@@ -317,10 +450,19 @@ function Customers() {
                   <UserPlus className="w-3.5 h-3.5" /> Assign
                 </button>
               )}
+              {canClose(c) && (
+                <button
+                  onClick={() => { setSelectedCustomer(c); setCloseNote(''); setShowCloseModal(true) }}
+                  className="text-rose-600 dark:text-rose-400 font-medium text-xs inline-flex items-center gap-1"
+                >
+                  <Lock className="w-3.5 h-3.5" /> Close
+                </button>
+              )}
             </div>
           </div>
         ))}
       </div>
+      )}
 
       {/* Add Customer Modal */}
       {showModal && (
@@ -449,9 +591,12 @@ function Customers() {
                   ))}
                   <div className="flex justify-between items-center py-2">
                     <span className="text-sm text-slate-500 dark:text-slate-400">Status</span>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${statusColors[selectedCustomer.status]}`}>
-                      {selectedCustomer.status}
-                    </span>
+                    {selectedCustomer.closed
+                      ? <span className={`px-3 py-1 rounded-full text-xs font-medium ${closedBadgeCls}`}>Close Done</span>
+                      : <span className={`px-3 py-1 rounded-full text-xs font-medium capitalize ${statusColors[selectedCustomer.status]}`}>
+                          {selectedCustomer.status}
+                        </span>
+                    }
                   </div>
                   {selectedCustomer.notes && (
                     <div className="py-2">
@@ -459,12 +604,41 @@ function Customers() {
                       <p className="text-sm text-ink-950 dark:text-white mt-1">{selectedCustomer.notes}</p>
                     </div>
                   )}
+                  {/* Closed detail — sirf admin ko dikhta hai; assignee/closer ko sirf "Close Done" badge dikhta hai */}
+                  {selectedCustomer.closed && user?.role === 'admin' && (
+                    <div className="mt-2 pt-3 border-t border-slate-100 dark:border-white/5 space-y-2">
+                      <div className="flex justify-between items-center py-1">
+                        <span className="text-sm text-slate-500 dark:text-slate-400">Closed By</span>
+                        <span className="text-sm font-medium text-ink-950 dark:text-white">{selectedCustomer.closedBy?.name || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between items-center py-1">
+                        <span className="text-sm text-slate-500 dark:text-slate-400">Closed On</span>
+                        <span className="text-sm font-medium text-ink-950 dark:text-white">{selectedCustomer.closedAt ? new Date(selectedCustomer.closedAt).toLocaleString() : 'N/A'}</span>
+                      </div>
+                      {selectedCustomer.closeNote && (
+                        <div className="py-1">
+                          <span className="text-sm text-slate-500 dark:text-slate-400">Close Note</span>
+                          <p className="text-sm text-ink-950 dark:text-white mt-1">{selectedCustomer.closeNote}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="mt-5 flex gap-3">
-                  <button onClick={() => { setShowDetailModal(false); setIsEditing(false) }} className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-ink-700 transition">Close</button>
-                  <button onClick={startEditing} className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-ink-950 font-medium transition inline-flex items-center justify-center gap-1.5">
-                    <Pencil className="w-3.5 h-3.5" /> Edit
-                  </button>
+                  <button onClick={() => { setShowDetailModal(false); setIsEditing(false) }} className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-ink-700 transition">Dismiss</button>
+                  {!selectedCustomer.closed && (
+                    <button onClick={startEditing} className="flex-1 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-ink-950 font-medium transition inline-flex items-center justify-center gap-1.5">
+                      <Pencil className="w-3.5 h-3.5" /> Edit
+                    </button>
+                  )}
+                  {canClose(selectedCustomer) && (
+                    <button
+                      onClick={() => { setShowDetailModal(false); setCloseNote(''); setShowCloseModal(true) }}
+                      className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-medium transition inline-flex items-center justify-center gap-1.5"
+                    >
+                      <Lock className="w-3.5 h-3.5" /> Close
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -524,6 +698,45 @@ function Customers() {
               <button onClick={() => { setShowAssignModal(false); setAssignNote('') }} className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-ink-700 transition">Cancel</button>
               <button onClick={handleAssign} disabled={assigning || !assignTo} className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition disabled:opacity-50">
                 {assigning ? 'Assigning...' : 'Assign ✓'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Close Customer Modal */}
+      {showCloseModal && selectedCustomer && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-ink-800 rounded-2xl p-6 w-full max-w-sm shadow-xl">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-display text-lg font-semibold text-ink-950 dark:text-white">Close Customer</h3>
+              <button onClick={() => setShowCloseModal(false)} className="text-slate-400 hover:text-slate-600 transition">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+              Closing: <span className="font-semibold text-ink-950 dark:text-white">{selectedCustomer.name}</span>
+            </p>
+            <p className="text-xs text-slate-400 mb-4">
+              Once closed, this customer will be removed from the active list. It can't be reopened or edited afterwards.
+            </p>
+
+            <div>
+              <label className={labelCls}>Note (optional)</label>
+              <textarea
+                placeholder="Reason for closing..."
+                value={closeNote}
+                onChange={(e) => setCloseNote(e.target.value)}
+                rows={3}
+                className={`${inputCls} resize-none`}
+              />
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setShowCloseModal(false); setCloseNote('') }} className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-ink-700 transition">Cancel</button>
+              <button onClick={handleClose} disabled={closing} className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-medium transition disabled:opacity-50">
+                {closing ? 'Closing...' : 'Close ✓'}
               </button>
             </div>
           </div>
