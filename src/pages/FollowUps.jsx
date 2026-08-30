@@ -1,13 +1,25 @@
 import { useState, useEffect } from 'react'
 import api from '../api/axios'
+import { PhoneCall, X, Repeat2, CalendarClock } from 'lucide-react'
 
 const statusColors = {
-  interested: 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400',
-  'not-interested': 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400',
-  followup: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400',
-  sale: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400',
-  lost: 'bg-red-200 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  interested: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
+  'not-interested': 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-400',
+  followup: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-400',
+  sale: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-400',
+  lost: 'bg-slate-200 text-slate-500 dark:bg-slate-600/20 dark:text-slate-400',
 }
+
+const dotColors = {
+  interested: 'bg-emerald-500',
+  'not-interested': 'bg-rose-500',
+  followup: 'bg-brand-500',
+  sale: 'bg-violet-500',
+  lost: 'bg-slate-400',
+}
+
+const inputCls = "w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 bg-slate-50 dark:bg-ink-800 text-ink-950 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition"
+const labelCls = "block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5"
 
 function FollowUps() {
   const [customers, setCustomers] = useState([])
@@ -21,6 +33,7 @@ function FollowUps() {
   })
   const [submitting, setSubmitting] = useState(false)
   const [quickActing, setQuickActing] = useState(false)
+  const [showListMobile, setShowListMobile] = useState(true)
 
   useEffect(() => {
     fetchCustomers()
@@ -42,6 +55,7 @@ function FollowUps() {
 
   const selectCustomer = async (customer) => {
     setSelected(customer)
+    setShowListMobile(false)
     setTimelineLoading(true)
     try {
       const res = await api.get(`/customers/${customer._id}/timeline`)
@@ -106,36 +120,47 @@ function FollowUps() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-3xl font-bold text-gray-800 dark:text-white">Follow Ups</h2>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">Track customer interactions</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h2 className="font-display text-2xl sm:text-3xl font-semibold text-ink-950 dark:text-white">Follow Ups</h2>
+          <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">Track customer interactions</p>
+        </div>
+        {/* Mobile: toggle back to list */}
+        {!showListMobile && (
+          <button
+            onClick={() => setShowListMobile(true)}
+            className="lg:hidden px-3 py-2 rounded-xl border border-slate-200 dark:border-ink-600 text-sm text-slate-600 dark:text-slate-300"
+          >
+            ← List
+          </button>
+        )}
       </div>
 
-      <div className="flex gap-6 h-[calc(100vh-180px)]">
+      <div className="flex gap-5 lg:h-[calc(100vh-200px)]">
 
         {/* Left — Customer List */}
-        <div className="w-80 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden flex flex-col">
-          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-            <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-              Customers ({customers.length})
+        <div className={`w-full lg:w-80 shrink-0 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel overflow-hidden flex-col ${showListMobile ? 'flex' : 'hidden lg:flex'}`}>
+          <div className="px-4 py-3.5 border-b border-slate-100 dark:border-white/5">
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+              Customers <span className="font-mono">({customers.length})</span>
             </p>
           </div>
-          <div className="overflow-y-auto flex-1">
+          <div className="overflow-y-auto flex-1 scrollbar-thin max-h-[60vh] lg:max-h-none">
             {loading ? (
-              <div className="p-4 text-center text-gray-400 text-sm">Loading...</div>
+              <div className="p-4 text-center text-slate-400 text-sm">Loading...</div>
             ) : customers.map(c => (
               <div
                 key={c._id}
                 onClick={() => selectCustomer(c)}
-                className={`px-4 py-3 cursor-pointer border-b border-gray-50 dark:border-gray-700/50 transition ${
+                className={`px-4 py-3 cursor-pointer border-b border-slate-50 dark:border-white/[0.03] transition ${
                   selected?._id === c._id
-                    ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500'
-                    : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
+                    ? 'bg-brand-50 dark:bg-brand-500/10 border-l-2 border-l-brand-500'
+                    : 'hover:bg-slate-50 dark:hover:bg-white/[0.03] border-l-2 border-l-transparent'
                 }`}
               >
-                <p className="font-medium text-gray-800 dark:text-white text-sm">{c.name}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{c.phone}</p>
-                <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs capitalize ${statusColors[c.status] || 'bg-gray-100 text-gray-500'}`}>
+                <p className="font-medium text-ink-950 dark:text-white text-sm">{c.name}</p>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">{c.phone}</p>
+                <span className={`inline-block mt-1.5 px-2 py-0.5 rounded-full text-[11px] capitalize ${statusColors[c.status] || 'bg-slate-100 text-slate-500'}`}>
                   {c.status}
                 </span>
               </div>
@@ -143,98 +168,99 @@ function FollowUps() {
           </div>
         </div>
 
-        {/* Right — Follow Up History */}
-        <div className="flex-1 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 flex flex-col overflow-hidden">
+        {/* Right — Follow Up Ledger */}
+        <div className={`flex-1 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel flex-col overflow-hidden ${showListMobile ? 'hidden lg:flex' : 'flex'}`}>
           {selected ? (
             <>
               {/* Customer Header */}
-              <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <div className="px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-bold text-gray-800 dark:text-white text-lg">{selected.name}</h3>
-                  <p className="text-sm text-gray-400">{selected.phone}</p>
+                  <h3 className="font-display font-semibold text-ink-950 dark:text-white text-lg">{selected.name}</h3>
+                  <p className="text-sm text-slate-400 font-mono">{selected.phone}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <button
                     onClick={() => handleQuickAction('not-interested')}
                     disabled={quickActing}
-                    className="px-3 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 text-sm font-medium rounded-xl transition disabled:opacity-50"
+                    className="px-3 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-xs sm:text-sm font-medium rounded-xl transition disabled:opacity-50"
                   >
                     Not Interested
                   </button>
                   <button
                     onClick={() => handleQuickAction('sale')}
                     disabled={quickActing}
-                    className="px-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-sm font-medium rounded-xl transition disabled:opacity-50"
+                    className="px-3 py-2 bg-violet-50 hover:bg-violet-100 dark:bg-violet-500/10 dark:hover:bg-violet-500/20 text-violet-600 dark:text-violet-400 text-xs sm:text-sm font-medium rounded-xl transition disabled:opacity-50"
                   >
                     Close (Sale)
                   </button>
                   <button
                     onClick={() => setShowModal(true)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition"
+                    className="px-4 py-2 bg-ink-950 dark:bg-brand-500 hover:bg-ink-800 dark:hover:bg-brand-600 text-white dark:text-ink-950 text-xs sm:text-sm font-medium rounded-xl transition inline-flex items-center gap-1.5"
                   >
-                    + Add Follow Up
+                    <PhoneCall className="w-3.5 h-3.5" /> Add Follow Up
                   </button>
                 </div>
               </div>
 
-              {/* Combined Timeline — assignment history + follow-ups, ek jagah, time order me */}
-              <div className="flex-1 overflow-y-auto p-6">
+              {/* Ledger Timeline — assignment history + follow-ups, time-ordered call log */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 scrollbar-thin">
                 {timelineLoading ? (
-                  <div className="text-center text-gray-400 py-12">Loading timeline...</div>
+                  <div className="text-center text-slate-400 py-12 text-sm">Loading timeline...</div>
                 ) : timeline.length === 0 ? (
-                  <div className="text-center text-gray-400 py-12">
-                    <p className="text-4xl mb-3">📞</p>
-                    <p>No activity yet — add the first follow up!</p>
+                  <div className="text-center text-slate-400 py-12">
+                    <PhoneCall className="w-8 h-8 mx-auto mb-3 text-slate-300 dark:text-slate-600" strokeWidth={1.5} />
+                    <p className="text-sm">No activity yet — add the first follow up!</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-0">
                     {timeline.map((item, i) => (
                       <div key={item._id} className="flex gap-4">
-                        {/* Timeline Line */}
+                        {/* Mono timestamp rail */}
+                        <div className="flex flex-col items-center w-16 sm:w-20 shrink-0 pt-1.5">
+                          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 text-right w-full leading-tight">
+                            {new Date(item.createdAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short' })}
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-300 dark:text-slate-600 text-right w-full">
+                            {new Date(item.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+
+                        {/* Line + dot */}
                         <div className="flex flex-col items-center">
-                          <div className={`w-3 h-3 rounded-full mt-1.5 shrink-0 ${item.type === 'assignment' ? 'bg-purple-500' : 'bg-blue-500'}`} />
+                          <div className={`w-2.5 h-2.5 rounded-full mt-1.5 shrink-0 ring-4 ring-white dark:ring-ink-800 ${item.type === 'assignment' ? 'bg-sky-500' : dotColors[item.status] || 'bg-slate-400'}`} />
                           {i !== timeline.length - 1 && (
-                            <div className="w-0.5 bg-gray-200 dark:bg-gray-600 flex-1 mt-1" />
+                            <div className="w-px bg-slate-200 dark:bg-white/10 flex-1 mt-1" />
                           )}
                         </div>
+
                         {/* Content */}
                         {item.type === 'assignment' ? (
-                          <div className="flex-1 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-xl p-4 mb-2">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
-                                🔄 Assigned
-                              </span>
-                              <span className="text-xs text-gray-400">
-                                {new Date(item.createdAt).toLocaleString()}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">
+                          <div className="flex-1 bg-sky-50/60 dark:bg-sky-500/[0.06] border border-sky-100 dark:border-sky-500/20 rounded-xl p-4 mb-4">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-400 mb-2">
+                              <Repeat2 className="w-3 h-3" /> Assigned
+                            </span>
+                            <p className="text-sm text-slate-700 dark:text-slate-300">
                               {item.fromUser?.name ? `${item.fromUser.name} → ` : 'Added directly to '}
                               <span className="font-semibold">{item.toUser?.name}</span>
-                              {item.toUser?.role && <span className="text-gray-400"> ({item.toUser.role})</span>}
+                              {item.toUser?.role && <span className="text-slate-400"> ({item.toUser.role})</span>}
                             </p>
-                            {item.note && <p className="text-xs text-gray-500 mt-1">{item.note}</p>}
-                            <p className="text-xs text-gray-400 mt-1">
+                            {item.note && <p className="text-xs text-slate-500 mt-1">{item.note}</p>}
+                            <p className="text-xs text-slate-400 mt-1.5">
                               by {item.assignedBy?.name}
                             </p>
                           </div>
                         ) : (
-                          <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 mb-2">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusColors[item.status]}`}>
-                                {item.status}
-                              </span>
-                              <span className="text-xs text-gray-400">
-                                {new Date(item.createdAt).toLocaleString()}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-700 dark:text-gray-300">{item.note}</p>
+                          <div className="flex-1 bg-slate-50 dark:bg-white/[0.03] rounded-xl p-4 mb-4">
+                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-medium capitalize ${statusColors[item.status]}`}>
+                              {item.status}
+                            </span>
+                            <p className="text-sm text-slate-700 dark:text-slate-300 mt-2">{item.note}</p>
                             {item.nextCallDate && (
-                              <p className="text-xs text-blue-500 mt-2">
-                                📅 Next Call: {new Date(item.nextCallDate).toLocaleDateString()}
+                              <p className="text-xs text-brand-600 dark:text-brand-400 mt-2 inline-flex items-center gap-1">
+                                <CalendarClock className="w-3.5 h-3.5" /> Next Call: {new Date(item.nextCallDate).toLocaleDateString()}
                               </p>
                             )}
-                            <p className="text-xs text-gray-400 mt-1">
+                            <p className="text-xs text-slate-400 mt-1.5">
                               by {item.doneBy?.name}
                             </p>
                           </div>
@@ -246,7 +272,7 @@ function FollowUps() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-gray-400">
+            <div className="flex-1 flex items-center justify-center text-slate-400 text-sm p-8 text-center">
               Select a customer to view follow ups
             </div>
           )}
@@ -256,19 +282,21 @@ function FollowUps() {
       {/* Add Follow Up Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md shadow-xl">
+          <div className="bg-white dark:bg-ink-800 rounded-2xl p-6 w-full max-w-md shadow-xl">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-xl font-bold text-gray-800 dark:text-white">Add Follow Up</h3>
-              <button onClick={() => setShowModal(false)} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
+              <h3 className="font-display text-lg font-semibold text-ink-950 dark:text-white">Add Follow Up</h3>
+              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 transition">
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status *</label>
+                <label className={labelCls}>Status *</label>
                 <select
                   value={form.status}
                   onChange={(e) => setForm({ ...form, status: e.target.value })}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={inputCls}
                 >
                   <option value="interested">🟢 Interested</option>
                   <option value="not-interested">🔴 Not Interested</option>
@@ -279,24 +307,24 @@ function FollowUps() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note *</label>
+                <label className={labelCls}>Note *</label>
                 <textarea
                   placeholder="What happened in this interaction..."
                   value={form.note}
                   onChange={(e) => setForm({ ...form, note: e.target.value })}
                   rows={4}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  className={`${inputCls} resize-none`}
                 />
               </div>
 
               {form.status === 'followup' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Next Call Date</label>
+                  <label className={labelCls}>Next Call Date</label>
                   <input
                     type="date"
                     value={form.nextCallDate}
                     onChange={(e) => setForm({ ...form, nextCallDate: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className={inputCls}
                   />
                 </div>
               )}
@@ -305,12 +333,12 @@ function FollowUps() {
             <div className="flex gap-3 mt-5">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-ink-700 transition"
               >Cancel</button>
               <button
                 onClick={handleSubmit}
                 disabled={submitting}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium transition disabled:opacity-50"
+                className="flex-1 py-2.5 rounded-xl bg-ink-950 dark:bg-brand-500 hover:bg-ink-800 dark:hover:bg-brand-600 text-white dark:text-ink-950 font-medium transition disabled:opacity-50"
               >
                 {submitting ? 'Saving...' : 'Save Follow Up'}
               </button>
