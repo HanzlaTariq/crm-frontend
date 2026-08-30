@@ -12,13 +12,15 @@ const statusColors = {
 function FollowUps() {
   const [customers, setCustomers] = useState([])
   const [selected, setSelected] = useState(null)
-  const [followups, setFollowups] = useState([])
+  const [timeline, setTimeline] = useState([])
   const [loading, setLoading] = useState(true)
+  const [timelineLoading, setTimelineLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [form, setForm] = useState({
     note: '', status: 'interested', nextCallDate: ''
   })
   const [submitting, setSubmitting] = useState(false)
+  const [quickActing, setQuickActing] = useState(false)
 
   useEffect(() => {
     fetchCustomers()
@@ -40,23 +42,31 @@ function FollowUps() {
 
   const selectCustomer = async (customer) => {
     setSelected(customer)
+    setTimelineLoading(true)
     try {
-      const res = await api.get(`/followups/${customer._id}`)
-      setFollowups(res.data)
+      const res = await api.get(`/customers/${customer._id}/timeline`)
+      setTimeline(res.data)
     } catch (err) {
       console.error(err)
+    } finally {
+      setTimelineLoading(false)
     }
+  }
+
+  const refreshTimeline = async (customerId) => {
+    const res = await api.get(`/customers/${customerId}/timeline`)
+    setTimeline(res.data)
   }
 
   const handleSubmit = async () => {
     if (!form.note || !form.status) return
     setSubmitting(true)
     try {
-      const res = await api.post('/followups', {
+      await api.post('/followups', {
         customerId: selected._id,
         ...form
       })
-      setFollowups([res.data, ...followups])
+      await refreshTimeline(selected._id)
       // Update customer status in list
       setCustomers(customers.map(c =>
         c._id === selected._id ? { ...c, status: form.status } : c
@@ -68,6 +78,29 @@ function FollowUps() {
       console.error(err)
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // Quick action — koi bhi user ek click me "Not Interested" ya "Close (Sale)" mark kar sakta hai
+  const handleQuickAction = async (status) => {
+    if (!selected) return
+    const noteText = status === 'sale' ? 'Marked as closed (sale done)' : 'Marked as not interested'
+    setQuickActing(true)
+    try {
+      await api.post('/followups', {
+        customerId: selected._id,
+        note: noteText,
+        status,
+      })
+      await refreshTimeline(selected._id)
+      setCustomers(customers.map(c =>
+        c._id === selected._id ? { ...c, status } : c
+      ))
+      setSelected({ ...selected, status })
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setQuickActing(false)
     }
   }
 
@@ -120,52 +153,92 @@ function FollowUps() {
                   <h3 className="font-bold text-gray-800 dark:text-white text-lg">{selected.name}</h3>
                   <p className="text-sm text-gray-400">{selected.phone}</p>
                 </div>
-                <button
-                  onClick={() => setShowModal(true)}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition"
-                >
-                  + Add Follow Up
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleQuickAction('not-interested')}
+                    disabled={quickActing}
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 text-sm font-medium rounded-xl transition disabled:opacity-50"
+                  >
+                    Not Interested
+                  </button>
+                  <button
+                    onClick={() => handleQuickAction('sale')}
+                    disabled={quickActing}
+                    className="px-3 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-sm font-medium rounded-xl transition disabled:opacity-50"
+                  >
+                    Close (Sale)
+                  </button>
+                  <button
+                    onClick={() => setShowModal(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition"
+                  >
+                    + Add Follow Up
+                  </button>
+                </div>
               </div>
 
-              {/* Timeline */}
+              {/* Combined Timeline — assignment history + follow-ups, ek jagah, time order me */}
               <div className="flex-1 overflow-y-auto p-6">
-                {followups.length === 0 ? (
+                {timelineLoading ? (
+                  <div className="text-center text-gray-400 py-12">Loading timeline...</div>
+                ) : timeline.length === 0 ? (
                   <div className="text-center text-gray-400 py-12">
                     <p className="text-4xl mb-3">📞</p>
-                    <p>No follow ups yet — add the first one!</p>
+                    <p>No activity yet — add the first follow up!</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {followups.map((f, i) => (
-                      <div key={f._id} className="flex gap-4">
+                    {timeline.map((item, i) => (
+                      <div key={item._id} className="flex gap-4">
                         {/* Timeline Line */}
                         <div className="flex flex-col items-center">
-                          <div className="w-3 h-3 rounded-full bg-blue-500 mt-1.5 shrink-0" />
-                          {i !== followups.length - 1 && (
+                          <div className={`w-3 h-3 rounded-full mt-1.5 shrink-0 ${item.type === 'assignment' ? 'bg-purple-500' : 'bg-blue-500'}`} />
+                          {i !== timeline.length - 1 && (
                             <div className="w-0.5 bg-gray-200 dark:bg-gray-600 flex-1 mt-1" />
                           )}
                         </div>
                         {/* Content */}
-                        <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 mb-2">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusColors[f.status]}`}>
-                              {f.status}
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              {new Date(f.createdAt).toLocaleDateString()}
-                            </span>
-                          </div>
-                          <p className="text-sm text-gray-700 dark:text-gray-300">{f.note}</p>
-                          {f.nextCallDate && (
-                            <p className="text-xs text-blue-500 mt-2">
-                              📅 Next Call: {new Date(f.nextCallDate).toLocaleDateString()}
+                        {item.type === 'assignment' ? (
+                          <div className="flex-1 bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 rounded-xl p-4 mb-2">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
+                                🔄 Assigned
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {new Date(item.createdAt).toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-700 dark:text-gray-300">
+                              {item.fromUser?.name ? `${item.fromUser.name} → ` : 'Added directly to '}
+                              <span className="font-semibold">{item.toUser?.name}</span>
+                              {item.toUser?.role && <span className="text-gray-400"> ({item.toUser.role})</span>}
                             </p>
-                          )}
-                          <p className="text-xs text-gray-400 mt-1">
-                            by {f.doneBy?.name}
-                          </p>
-                        </div>
+                            {item.note && <p className="text-xs text-gray-500 mt-1">{item.note}</p>}
+                            <p className="text-xs text-gray-400 mt-1">
+                              by {item.assignedBy?.name}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="flex-1 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 mb-2">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${statusColors[item.status]}`}>
+                                {item.status}
+                              </span>
+                              <span className="text-xs text-gray-400">
+                                {new Date(item.createdAt).toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="text-sm text-gray-700 dark:text-gray-300">{item.note}</p>
+                            {item.nextCallDate && (
+                              <p className="text-xs text-blue-500 mt-2">
+                                📅 Next Call: {new Date(item.nextCallDate).toLocaleDateString()}
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-400 mt-1">
+                              by {item.doneBy?.name}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

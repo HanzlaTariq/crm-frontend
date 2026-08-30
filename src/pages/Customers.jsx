@@ -27,6 +27,7 @@ function Customers() {
   const [submitting, setSubmitting] = useState(false)
   const [teamMembers, setTeamMembers] = useState([])
   const [assignTo, setAssignTo] = useState('')
+  const [assignNote, setAssignNote] = useState('')
   const [assigning, setAssigning] = useState(false)
 
   useEffect(() => {
@@ -103,7 +104,8 @@ function Customers() {
     setAssigning(true)
     try {
       const res = await api.put(`/customers/${selectedCustomer._id}/assign`, {
-        assignedTo: assignTo
+        assignedTo: assignTo,
+        note: assignNote,
       })
       setCustomers(customers.map(c =>
         c._id === selectedCustomer._id ? { ...c, assignedTo: res.data.assignedTo, assignedBy: res.data.assignedBy } : c
@@ -111,6 +113,7 @@ function Customers() {
       setSelectedCustomer(res.data)
       setShowAssignModal(false)
       setAssignTo('')
+      setAssignNote('')
     } catch (err) {
       console.error(err)
     } finally {
@@ -441,8 +444,19 @@ function Customers() {
               </select>
             </div>
 
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Note (optional)</label>
+              <textarea
+                placeholder="Why is this being assigned/reassigned..."
+                value={assignNote}
+                onChange={(e) => setAssignNote(e.target.value)}
+                rows={2}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+            </div>
+
             <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowAssignModal(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">Cancel</button>
+              <button onClick={() => { setShowAssignModal(false); setAssignNote('') }} className="flex-1 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">Cancel</button>
               <button onClick={handleAssign} disabled={assigning || !assignTo} className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium transition disabled:opacity-50">
                 {assigning ? 'Assigning...' : 'Assign ✓'}
               </button>
