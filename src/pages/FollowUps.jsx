@@ -5,6 +5,7 @@ import { getErrorMessage } from '../utils/errors'
 import useDebounce from '../hooks/useDebounce'
 import { SkeletonCardList } from '../components/Skeleton'
 import EmptyState from '../components/EmptyState'
+import Attachments from '../components/Attachments'
 import { PhoneCall, X, Repeat2, CalendarClock, Search, Users } from 'lucide-react'
 
 const statusColors = {
@@ -93,9 +94,14 @@ function FollowUps() {
     if (!form.note || !form.status) return
     setSubmitting(true)
     try {
+      // Only include nextCallDate when the user actually picked one — an
+      // empty string sent as-is used to trip backend date validation
+      // ("Invalid date") on every non-followup status save.
+      const { nextCallDate, ...rest } = form
       await api.post('/followups', {
         customerId: selected._id,
-        ...form
+        ...rest,
+        ...(nextCallDate ? { nextCallDate } : {}),
       })
       await refreshTimeline(selected._id)
       setCustomers(customers.map(c =>
@@ -229,6 +235,11 @@ function FollowUps() {
                     <PhoneCall className="w-3.5 h-3.5" /> Add Follow Up
                   </button>
                 </div>
+              </div>
+
+              {/* Attachments — files related to this customer (quotes, ID scans, contracts, etc.) */}
+              <div className="px-5 sm:px-6 pt-5 pb-1 border-b border-slate-100 dark:border-white/5">
+                <Attachments customerId={selected._id} />
               </div>
 
               {/* Ledger Timeline — assignment history + follow-ups, time-ordered call log */}
