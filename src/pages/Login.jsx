@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import toast from 'react-hot-toast'
 import api from "../api/axios";
 import { useAuth } from '../context/AuthContext'
+import { getErrorMessage } from '../utils/errors'
 import { Radio, Mail, Lock, ArrowRight, PhoneCall, Users, TrendingUp } from 'lucide-react'
 
 function Login() {
@@ -15,9 +17,12 @@ function Login() {
     setError('')
     try {
       const res = await api.post('/auth/login', form)
+      toast.success(`Welcome back, ${res.data.user.name}`)
       login(res.data.user, res.data.token)
     } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong')
+      const message = getErrorMessage(err)
+      setError(message)
+      toast.error(message)
     } finally {
       setLoading(false)
     }

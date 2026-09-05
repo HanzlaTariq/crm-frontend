@@ -1,6 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import toast from "react-hot-toast";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
+import { getErrorMessage } from "../utils/errors";
+import useDebounce from "../hooks/useDebounce";
+import EmptyState from "../components/EmptyState";
 import { Plus, X, Pencil, Search, Users } from "lucide-react";
 
 const roleColors = {
@@ -14,6 +18,11 @@ const roleColors = {
 const inputCls = "w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 bg-slate-50 dark:bg-ink-800 text-ink-950 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition"
 const labelCls = "block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5"
 
+// A single flat team page rarely runs past a few hundred people; a high
+// limit plus server-side search keeps this simple while still fixing the
+// bug where GET /users now defaults to 20 results per page (Phase 1).
+const LIST_LIMIT = 100
+
 function Team() {
   const { user } = useAuth();
   const [members, setMembers] = useState([]);
@@ -24,6 +33,7 @@ function Team() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 350);
   const [editingMember, setEditingMember] = useState(null);
   const [form, setForm] = useState({
     name: "",
@@ -39,30 +49,31 @@ function Team() {
     managerId: "",
   });
 
-  useEffect(() => {
-    fetchTeam();
-    fetchAssignable();
-  }, []);
-
-  const fetchTeam = async () => {
+  const fetchTeam = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await api.get("/users");
+      const res = await api.get("/users", {
+        params: { limit: LIST_LIMIT, ...(debouncedSearch ? { search: debouncedSearch } : {}) },
+      });
       setMembers(res.data);
     } catch (err) {
-      console.error(err);
+      toast.error(getErrorMessage(err, "Could not load team"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedSearch]);
 
-  const fetchAssignable = async () => {
+  const fetchAssignable = useCallback(async () => {
     try {
       const res = await api.get("/users/assignable");
       setAssignable(res.data);
     } catch (err) {
-      console.error(err);
+      toast.error(getErrorMessage(err, "Could not load assignable managers"));
     }
-  };
+  }, []);
+
+  useEffect(() => { fetchTeam() }, [fetchTeam]);
+  useEffect(() => { fetchAssignable() }, [fetchAssignable]);
 
   const handleSubmit = async () => {
     if (!form.name || !form.email || !form.password) return;
@@ -70,11 +81,12 @@ function Team() {
     setError("");
     try {
       const res = await api.post("/auth/register", form);
-      setMembers([res.data.user, ...members]);
       setForm({ name: "", email: "", password: "", role: "salesperson", managerId: "" });
       setShowModal(false);
+      toast.success(`${res.data.user.name} added to the team`);
+      fetchTeam();
     } catch (err) {
-      setError(err.response?.data?.message || "Something went wrong");
+      setError(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -88,6 +100,7 @@ function Team() {
       role: member.role,
       managerId: member.manager?._id || "",
     });
+    setError("");
     setShowEditModal(true);
   };
 
@@ -100,8 +113,9 @@ function Team() {
       setMembers(members.map(m => m._id === editingMember._id ? res.data : m));
       setShowEditModal(false);
       setEditingMember(null);
+      toast.success('Team member updated');
     } catch (err) {
-      setError(err.response?.data?.message || "Something went wrong");
+      setError(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -114,21 +128,11 @@ function Team() {
     salesperson: 'Salespersons',
   };
 
-  const filteredMembers = members.filter((member) => {
-    const term = search.toLowerCase().trim()
-    if (!term) return true
-    return (
-      member.name.toLowerCase().includes(term) ||
-      member.email.toLowerCase().includes(term) ||
-      member.role.toLowerCase().includes(term)
-    )
-  })
-
   const grouped = {
-    manager: filteredMembers.filter((m) => m.role === 'manager'),
-    jmanager: filteredMembers.filter((m) => m.role === 'jmanager'),
-    telecom: filteredMembers.filter((m) => m.role === 'telecom'),
-    salesperson: filteredMembers.filter((m) => m.role === 'salesperson'),
+    manager: members.filter((m) => m.role === 'manager'),
+    jmanager: members.filter((m) => m.role === 'jmanager'),
+    telecom: members.filter((m) => m.role === 'telecom'),
+    salesperson: members.filter((m) => m.role === 'salesperson'),
   };
 
   return (
@@ -138,7 +142,7 @@ function Team() {
         <div>
           <h2 className="font-display text-2xl sm:text-3xl font-semibold text-ink-950 dark:text-white">Team</h2>
           <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-            {filteredMembers.length} member{filteredMembers.length !== 1 ? 's' : ''} shown
+            {members.length} member{members.length !== 1 ? 's' : ''} shown
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -152,9 +156,9 @@ function Team() {
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 bg-white dark:bg-ink-800 text-ink-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/40"
             />
           </div>
-          {['admin', 'manager'].includes(user?.role) && (
+          {user?.role === 'admin' && (
             <button
-              onClick={() => setShowModal(true)}
+              onClick={() => { setError(''); setShowModal(true) }}
               className="inline-flex items-center justify-center gap-1.5 px-5 py-2.5 bg-ink-950 hover:bg-ink-800 dark:bg-brand-500 dark:hover:bg-brand-600 text-white dark:text-ink-950 font-medium rounded-xl transition shrink-0"
             >
               <Plus className="w-4 h-4" strokeWidth={2.25} />
@@ -171,11 +175,11 @@ function Team() {
           ))}
         </div>
       ) : members.length === 0 ? (
-        <div className="text-center py-16 text-slate-400">
-          <Users className="w-10 h-10 mx-auto mb-4 text-slate-300 dark:text-slate-600" strokeWidth={1.5} />
-          <p className="text-base font-medium text-slate-500 dark:text-slate-400">No team members yet</p>
-          <p className="text-sm mt-1">Add your first team member to get started</p>
-        </div>
+        <EmptyState
+          icon={Users}
+          title="No team members found"
+          message={search ? 'Try a different search term.' : 'Add your first team member to get started'}
+        />
       ) : (
         <div className="space-y-8">
           {Object.entries(grouped).map(([role, group]) => {
@@ -190,9 +194,8 @@ function Team() {
                   {group.map((m) => (
                     <div
                       key={m._id}
-                      className="bg-white dark:bg-ink-800 rounded-xl p-5 border border-slate-100 dark:border-white/5 shadow-panel hover:shadow-md transition"
+                      className="bg-white dark:bg-ink-800 rounded-xl p-5 border border-slate-100 dark:border-white/5 shadow-panel"
                     >
-                      {/* Avatar */}
                       <div className="flex items-center justify-between mb-4">
                         <div className="w-11 h-11 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-ink-950 text-lg font-display font-bold">
                           {m.name?.charAt(0)?.toUpperCase()}
@@ -296,7 +299,7 @@ function Team() {
               >Cancel</button>
               <button
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || !form.name || !form.email || !form.password}
                 className="flex-1 py-2.5 rounded-xl bg-ink-950 dark:bg-brand-500 hover:bg-ink-800 dark:hover:bg-brand-600 text-white dark:text-ink-950 font-medium transition disabled:opacity-50"
               >
                 {submitting ? "Adding..." : "Add Member"}
@@ -370,7 +373,7 @@ function Team() {
               >Cancel</button>
               <button
                 onClick={handleEditSubmit}
-                disabled={submitting}
+                disabled={submitting || !editForm.name || !editForm.email}
                 className="flex-1 py-2.5 rounded-xl bg-ink-950 dark:bg-brand-500 hover:bg-ink-800 dark:hover:bg-brand-600 text-white dark:text-ink-950 font-medium transition disabled:opacity-50"
               >
                 {submitting ? "Saving..." : "Save Changes"}

@@ -1,10 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import api from '../api/axios'
 import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { getErrorMessage } from '../utils/errors'
+import { SkeletonCard, SkeletonTable } from '../components/Skeleton'
+import EmptyState from '../components/EmptyState'
 import {
-  Users, CircleDot, PhoneCall, CheckCircle2, XCircle, Ban, ArrowRight,
+  Users, CircleDot, PhoneCall, CheckCircle2, XCircle, Ban, ArrowRight, TrendingUp, Inbox,
 } from 'lucide-react'
+import {
+  ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  PieChart, Pie, Cell, Legend, BarChart, Bar,
+} from 'recharts'
 
 const statusColors = {
   new: 'bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-300',
@@ -15,6 +23,37 @@ const statusColors = {
   lost: 'bg-slate-200 text-slate-500 dark:bg-slate-600/20 dark:text-slate-400',
 }
 
+const PIE_COLORS = {
+  new: '#64748B',
+  interested: '#12B76A',
+  'not-interested': '#F04438',
+  followup: '#E8A33D',
+  sale: '#7C5CFF',
+  lost: '#94A3B8',
+}
+
+const PERIODS = [
+  { key: 'week', label: '7 Days' },
+  { key: 'month', label: '30 Days' },
+  { key: 'year', label: '12 Months' },
+]
+
+// Tooltip content is plain divs styled to match the card system rather than
+// recharts' default tooltip look.
+function ChartTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-white dark:bg-ink-800 border border-slate-100 dark:border-white/10 rounded-lg px-3 py-2 shadow-panel text-xs">
+      <p className="text-slate-400 dark:text-slate-500 font-mono mb-1">{label}</p>
+      {payload.map((p) => (
+        <p key={p.dataKey} className="text-ink-950 dark:text-white font-medium">
+          {p.name}: <span className="tabular">{p.value}</span>
+        </p>
+      ))}
+    </div>
+  )
+}
+
 function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -22,24 +61,40 @@ function Dashboard() {
   const [recent, setRecent] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchData()
-  }, [])
+  const [analytics, setAnalytics] = useState(null)
+  const [period, setPeriod] = useState('month')
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
 
-  const fetchData = async () => {
+  const fetchOverview = useCallback(async () => {
+    setLoading(true)
     try {
       const [statsRes, customersRes] = await Promise.all([
         api.get('/customers/stats/summary'),
-        api.get('/customers'),
+        api.get('/customers', { params: { limit: 5 } }),
       ])
       setStats(statsRes.data)
-      setRecent(customersRes.data.slice(0, 5))
+      setRecent(customersRes.data)
     } catch (err) {
-      console.error(err)
+      toast.error(getErrorMessage(err, 'Could not load dashboard'))
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  const fetchAnalytics = useCallback(async (p) => {
+    setAnalyticsLoading(true)
+    try {
+      const res = await api.get('/dashboard/analytics', { params: { period: p } })
+      setAnalytics(res.data)
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Could not load analytics'))
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchOverview() }, [fetchOverview])
+  useEffect(() => { fetchAnalytics(period) }, [period, fetchAnalytics])
 
   const cards = [
     { label: 'Total Customers', value: stats?.total ?? 0, icon: Users, tint: 'text-slate-600 bg-slate-100 dark:text-slate-300 dark:bg-slate-500/15', trend: 'All leads' },
@@ -49,6 +104,8 @@ function Dashboard() {
     { label: 'Not Interested', value: stats?.notInterested ?? 0, icon: XCircle, tint: 'text-rose-600 bg-rose-50 dark:text-rose-400 dark:bg-rose-500/15', trend: 'Cold leads' },
     { label: 'Lost', value: stats?.lost ?? 0, icon: Ban, tint: 'text-slate-500 bg-slate-100 dark:text-slate-400 dark:bg-slate-600/20', trend: 'Gone leads' },
   ]
+
+  const showPerUser = ['admin', 'manager', 'jmanager'].includes(user?.role)
 
   return (
     <div>
@@ -68,9 +125,7 @@ function Dashboard() {
       {/* Stats Cards */}
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="bg-white dark:bg-ink-800 rounded-xl p-5 h-32 animate-pulse border border-slate-100 dark:border-white/5" />
-          ))}
+          {[...Array(6)].map((_, i) => <SkeletonCard key={i} className="h-32" />)}
         </div>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -94,6 +149,111 @@ function Dashboard() {
         </div>
       )}
 
+      {/* Analytics header + period toggle */}
+      <div className="mt-8 flex items-center justify-between gap-3">
+        <h3 className="font-display font-semibold text-ink-950 dark:text-white text-base">Analytics</h3>
+        <div className="flex gap-1.5 bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-600 rounded-xl p-1">
+          {PERIODS.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setPeriod(p.key)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                period === p.key
+                  ? 'bg-ink-950 dark:bg-brand-500 text-white dark:text-ink-950'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {analyticsLoading ? (
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <SkeletonCard className="h-72 lg:col-span-2" />
+          <SkeletonCard className="h-72" />
+        </div>
+      ) : !analytics || analytics.totalAllTime === 0 ? (
+        <div className="mt-4 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel">
+          <EmptyState icon={TrendingUp} title="No data yet" message="Analytics will appear once customers start coming in." />
+        </div>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Leads over time */}
+          <div className="lg:col-span-2 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel p-5">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm font-medium text-ink-950 dark:text-white">Leads Over Time</p>
+              <p className="text-xs text-slate-400 font-mono">{analytics.totalInRange} in range</p>
+            </div>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={analytics.leadsOverTime} margin={{ left: -20, right: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-slate-100 dark:text-white/5" vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltip />} />
+                <Line type="monotone" dataKey="count" name="Leads" stroke="#E8A33D" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Status breakdown */}
+          <div className="bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel p-5">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium text-ink-950 dark:text-white">Status Breakdown</p>
+              <p className="text-xs font-mono text-emerald-600 dark:text-emerald-400">{analytics.conversionRate}% conv.</p>
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie
+                  data={analytics.statusBreakdown}
+                  dataKey="count"
+                  nameKey="status"
+                  innerRadius={45}
+                  outerRadius={72}
+                  paddingAngle={2}
+                >
+                  {analytics.statusBreakdown.map((entry) => (
+                    <Cell key={entry.status} fill={PIE_COLORS[entry.status] || '#94A3B8'} />
+                  ))}
+                </Pie>
+                <Tooltip content={<ChartTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-1 justify-center">
+              {analytics.statusBreakdown.map((s) => (
+                <span key={s.status} className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 capitalize">
+                  <span className="w-2 h-2 rounded-full" style={{ background: PIE_COLORS[s.status] || '#94A3B8' }} />
+                  {s.status} ({s.count})
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Per-user performance — admin/manager/jmanager only */}
+          {showPerUser && analytics.perUserPerformance?.length > 0 && (
+            <div className="lg:col-span-3 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel p-5">
+              <p className="text-sm font-medium text-ink-950 dark:text-white mb-4">Per-Agent Performance</p>
+              <ResponsiveContainer width="100%" height={Math.max(180, analytics.perUserPerformance.length * 34)}>
+                <BarChart
+                  data={analytics.perUserPerformance}
+                  layout="vertical"
+                  margin={{ left: 10, right: 20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-slate-100 dark:text-white/5" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                  <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar dataKey="sale" name="Sales" fill="#12B76A" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="lost" name="Lost" fill="#F04438" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Recent Customers */}
       <div className="mt-8 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 overflow-hidden shadow-panel">
         <div className="px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-white/5 flex items-center justify-between">
@@ -106,8 +266,10 @@ function Dashboard() {
           </button>
         </div>
 
-        {recent.length === 0 ? (
-          <div className="p-8 text-center text-slate-400 text-sm">No customers yet</div>
+        {loading ? (
+          <SkeletonTable rows={5} cols={4} />
+        ) : recent.length === 0 ? (
+          <EmptyState icon={Inbox} title="No customers yet" message="New leads will show up here as soon as they're added." />
         ) : (
           <div className="overflow-x-auto scrollbar-thin">
             <table className="w-full text-sm min-w-[520px]">

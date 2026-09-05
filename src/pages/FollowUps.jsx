@@ -1,6 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import toast from 'react-hot-toast'
 import api from '../api/axios'
-import { PhoneCall, X, Repeat2, CalendarClock } from 'lucide-react'
+import { getErrorMessage } from '../utils/errors'
+import useDebounce from '../hooks/useDebounce'
+import { SkeletonCardList } from '../components/Skeleton'
+import EmptyState from '../components/EmptyState'
+import { PhoneCall, X, Repeat2, CalendarClock, Search, Users } from 'lucide-react'
 
 const statusColors = {
   interested: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
@@ -21,6 +26,11 @@ const dotColors = {
 const inputCls = "w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-ink-600 bg-slate-50 dark:bg-ink-800 text-ink-950 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40 focus:border-brand-500 transition"
 const labelCls = "block text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5"
 
+// This panel needs "all my customers", not a page of them — a high limit plus
+// server-side search keeps it working now that GET /customers defaults to
+// 20 results per page (Phase 1 pagination).
+const LIST_LIMIT = 100
+
 function FollowUps() {
   const [customers, setCustomers] = useState([])
   const [selected, setSelected] = useState(null)
@@ -34,24 +44,31 @@ function FollowUps() {
   const [submitting, setSubmitting] = useState(false)
   const [quickActing, setQuickActing] = useState(false)
   const [showListMobile, setShowListMobile] = useState(true)
+  const [search, setSearch] = useState('')
+  const debouncedSearch = useDebounce(search, 350)
 
-  useEffect(() => {
-    fetchCustomers()
-  }, [])
-
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async (preserveSelection = false) => {
+    setLoading(true)
     try {
-      const res = await api.get('/customers')
+      const res = await api.get('/customers', {
+        params: { limit: LIST_LIMIT, ...(debouncedSearch ? { search: debouncedSearch } : {}) },
+      })
       setCustomers(res.data)
-      if (res.data.length > 0) {
+      if (!preserveSelection && res.data.length > 0) {
         selectCustomer(res.data[0])
+      } else if (res.data.length === 0) {
+        setSelected(null)
+        setTimeline([])
       }
     } catch (err) {
-      console.error(err)
+      toast.error(getErrorMessage(err, 'Could not load customers'))
     } finally {
       setLoading(false)
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedSearch])
+
+  useEffect(() => { fetchCustomers() }, [fetchCustomers])
 
   const selectCustomer = async (customer) => {
     setSelected(customer)
@@ -61,7 +78,7 @@ function FollowUps() {
       const res = await api.get(`/customers/${customer._id}/timeline`)
       setTimeline(res.data)
     } catch (err) {
-      console.error(err)
+      toast.error(getErrorMessage(err, 'Could not load timeline'))
     } finally {
       setTimelineLoading(false)
     }
@@ -81,15 +98,15 @@ function FollowUps() {
         ...form
       })
       await refreshTimeline(selected._id)
-      // Update customer status in list
       setCustomers(customers.map(c =>
         c._id === selected._id ? { ...c, status: form.status } : c
       ))
       setSelected({ ...selected, status: form.status })
       setForm({ note: '', status: 'interested', nextCallDate: '' })
       setShowModal(false)
+      toast.success('Follow up logged')
     } catch (err) {
-      console.error(err)
+      toast.error(getErrorMessage(err, 'Could not save follow up'))
     } finally {
       setSubmitting(false)
     }
@@ -111,8 +128,9 @@ function FollowUps() {
         c._id === selected._id ? { ...c, status } : c
       ))
       setSelected({ ...selected, status })
+      toast.success(status === 'sale' ? 'Marked as sale' : 'Marked as not interested')
     } catch (err) {
-      console.error(err)
+      toast.error(getErrorMessage(err, 'Could not update status'))
     } finally {
       setQuickActing(false)
     }
@@ -140,14 +158,26 @@ function FollowUps() {
 
         {/* Left — Customer List */}
         <div className={`w-full lg:w-80 shrink-0 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel overflow-hidden flex-col ${showListMobile ? 'flex' : 'hidden lg:flex'}`}>
-          <div className="px-4 py-3.5 border-b border-slate-100 dark:border-white/5">
+          <div className="px-4 py-3.5 border-b border-slate-100 dark:border-white/5 space-y-2.5">
             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
               Customers <span className="font-mono">({customers.length})</span>
             </p>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" strokeWidth={1.75} />
+              <input
+                type="text"
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-slate-200 dark:border-ink-600 bg-slate-50 dark:bg-ink-700 text-ink-950 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+              />
+            </div>
           </div>
           <div className="overflow-y-auto flex-1 scrollbar-thin max-h-[60vh] lg:max-h-none">
             {loading ? (
-              <div className="p-4 text-center text-slate-400 text-sm">Loading...</div>
+              <div className="p-3"><SkeletonCardList count={4} /></div>
+            ) : customers.length === 0 ? (
+              <EmptyState icon={Users} title="No customers found" message={search ? 'Try a different search term.' : 'Customers assigned to you will show up here.'} />
             ) : customers.map(c => (
               <div
                 key={c._id}
@@ -172,13 +202,12 @@ function FollowUps() {
         <div className={`flex-1 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel flex-col overflow-hidden ${showListMobile ? 'hidden lg:flex' : 'flex'}`}>
           {selected ? (
             <>
-              {/* Customer Header */}
               <div className="px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-display font-semibold text-ink-950 dark:text-white text-lg">{selected.name}</h3>
-                  <p className="text-sm text-slate-400 font-mono">{selected.phone}</p>
+                  <h3 className="font-display font-semibold text-ink-950 dark:text-white">{selected.name}</h3>
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">{selected.phone}</p>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => handleQuickAction('not-interested')}
                     disabled={quickActing}
@@ -205,12 +234,13 @@ function FollowUps() {
               {/* Ledger Timeline — assignment history + follow-ups, time-ordered call log */}
               <div className="flex-1 overflow-y-auto p-5 sm:p-6 scrollbar-thin">
                 {timelineLoading ? (
-                  <div className="text-center text-slate-400 py-12 text-sm">Loading timeline...</div>
-                ) : timeline.length === 0 ? (
-                  <div className="text-center text-slate-400 py-12">
-                    <PhoneCall className="w-8 h-8 mx-auto mb-3 text-slate-300 dark:text-slate-600" strokeWidth={1.5} />
-                    <p className="text-sm">No activity yet — add the first follow up!</p>
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="h-20 rounded-xl bg-slate-50 dark:bg-white/[0.03] animate-pulse" />
+                    ))}
                   </div>
+                ) : timeline.length === 0 ? (
+                  <EmptyState icon={PhoneCall} title="No activity yet" message="Add the first follow up to start the ledger." />
                 ) : (
                   <div className="space-y-0">
                     {timeline.map((item, i) => (
@@ -337,7 +367,7 @@ function FollowUps() {
               >Cancel</button>
               <button
                 onClick={handleSubmit}
-                disabled={submitting}
+                disabled={submitting || !form.note}
                 className="flex-1 py-2.5 rounded-xl bg-ink-950 dark:bg-brand-500 hover:bg-ink-800 dark:hover:bg-brand-600 text-white dark:text-ink-950 font-medium transition disabled:opacity-50"
               >
                 {submitting ? 'Saving...' : 'Save Follow Up'}
