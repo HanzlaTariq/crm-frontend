@@ -230,6 +230,36 @@ function Dashboard() {
             </div>
           </div>
 
+          {/* Phase 4 — role-based view: individual contributors (telecom/salesperson)
+              get their own personal snapshot instead of the team leaderboard. The
+              underlying /dashboard/analytics call is already scoped to "just me" for
+              these roles (see getTeamIds), so perUserPerformance[0] here is their own row. */}
+          {!showPerUser && analytics.perUserPerformance?.length > 0 && (
+            <div className="lg:col-span-3 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel p-5">
+              <p className="text-sm font-medium text-ink-950 dark:text-white mb-4">Your Performance</p>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="text-center">
+                  <p className="text-2xl sm:text-3xl font-display font-semibold text-ink-950 dark:text-white tabular">
+                    {analytics.perUserPerformance[0].total}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Leads Handled</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl sm:text-3xl font-display font-semibold text-emerald-600 dark:text-emerald-400 tabular">
+                    {analytics.perUserPerformance[0].sale}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Sales Closed</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl sm:text-3xl font-display font-semibold text-brand-600 dark:text-brand-400 tabular">
+                    {analytics.perUserPerformance[0].conversionRate}%
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Conversion Rate</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Per-user performance — admin/manager/jmanager only */}
           {showPerUser && analytics.perUserPerformance?.length > 0 && (
             <div className="lg:col-span-3 bg-white dark:bg-ink-800 rounded-xl border border-slate-100 dark:border-white/5 shadow-panel p-5">

@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard'
 import Customers from './pages/Customers'
 import Followups from './pages/FollowUps'
 import Team from './pages/Team'
+import Calendar from './pages/Calendar'
 
 
 function App() {
@@ -66,6 +67,16 @@ function App() {
                 <ProtectedRoute>
                   <Layout dark={dark} setDark={setDark}>
                     <Followups />
+                  </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/calendar"
+              element={
+                <ProtectedRoute>
+                  <Layout dark={dark} setDark={setDark}>
+                    <Calendar />
                   </Layout>
                 </ProtectedRoute>
               }

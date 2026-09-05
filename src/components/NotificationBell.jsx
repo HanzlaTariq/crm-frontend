@@ -31,9 +31,13 @@ function timeAgo(dateStr) {
   return new Date(dateStr).toLocaleDateString()
 }
 
-// Poll interval for the unread badge — cheap endpoint, no need for sockets
-// until Phase 4's real-time work lands.
-const POLL_MS = 30000
+// Phase 4 — real-time was evaluated (Socket.io needs a persistent connection,
+// which doesn't fit this backend's Vercel serverless deployment) and polling
+// was chosen instead: no new infra, works with the current setup. Tightened
+// from 30s to 15s and paused while the tab is hidden so it doesn't burn
+// requests/battery in a background tab; resumes (with an immediate refresh)
+// the moment the tab becomes visible again.
+const POLL_MS = 15000
 
 function NotificationBell() {
   const [open, setOpen] = useState(false)
@@ -43,14 +47,30 @@ function NotificationBell() {
   const [markingAll, setMarkingAll] = useState(false)
   const wrapRef = useRef(null)
   const navigate = useNavigate()
+  const prevUnreadRef = useRef(0)
+  const firstFetchRef = useRef(true)
+  const openRef = useRef(false)
+
+  useEffect(() => { openRef.current = open }, [open])
 
   const fetchUnreadCount = useCallback(async () => {
     try {
       const res = await api.get('/notifications/unread-count')
-      setUnreadCount(res.data.unreadCount)
+      const next = res.data.unreadCount
+      // Went up since the last poll (and it's not the very first load) —
+      // something new arrived. Nudge the user with a toast, and if the
+      // dropdown is already open, refresh its list too.
+      if (!firstFetchRef.current && next > prevUnreadRef.current) {
+        toast('You have a new notification', { icon: '🔔' })
+        if (openRef.current) fetchList()
+      }
+      prevUnreadRef.current = next
+      firstFetchRef.current = false
+      setUnreadCount(next)
     } catch {
       // Silent — badge just won't update this tick, not worth a toast.
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchList = useCallback(async () => {
@@ -67,9 +87,35 @@ function NotificationBell() {
   }, [])
 
   useEffect(() => {
+    let interval = null
+
+    const start = () => {
+      if (interval) return
+      interval = setInterval(fetchUnreadCount, POLL_MS)
+    }
+    const stop = () => {
+      if (!interval) return
+      clearInterval(interval)
+      interval = null
+    }
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        stop()
+      } else {
+        fetchUnreadCount() // catch up immediately on return
+        start()
+      }
+    }
+
     fetchUnreadCount()
-    const interval = setInterval(fetchUnreadCount, POLL_MS)
-    return () => clearInterval(interval)
+    if (!document.hidden) start()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [fetchUnreadCount])
 
   useEffect(() => {

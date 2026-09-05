@@ -245,6 +245,23 @@ function Customers() {
   const canAddCustomer = user?.role !== 'admin'
   const canClose = (c) => !c.closed && (user?.role === 'admin' || String(c.assignedTo?._id) === String(user?.id))
 
+  // Phase 4 keyboard shortcut — "n" opens Add Customer, as long as no other
+  // modal is already open and the user isn't typing in a field somewhere.
+  const anyModalOpen = showModal || showDetailModal || showAssignModal || showCloseModal || showBulkAssignModal || showBulkStatusModal
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key !== 'n' && e.key !== 'N') return
+      if (!canAddCustomer || anyModalOpen) return
+      const tag = e.target?.tagName
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable
+      if (isTyping) return
+      e.preventDefault()
+      setShowModal(true)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [canAddCustomer, anyModalOpen])
+
   // --- Bulk selection helpers ---
   const toggleSelectAll = () => {
     if (selectedIds.size === customers.length) setSelectedIds(new Set())
@@ -357,6 +374,9 @@ function Customers() {
             >
               <Plus className="w-4 h-4" strokeWidth={2.25} />
               Add Customer
+              <kbd className="hidden sm:inline-flex ml-1 items-center justify-center w-4 h-4 rounded border border-white/25 dark:border-ink-950/25 text-[9px] font-mono opacity-70">
+                n
+              </kbd>
             </button>
           )}
         </div>

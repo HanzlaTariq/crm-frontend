@@ -5,6 +5,7 @@ import {
   Users,
   PhoneCall,
   UsersRound,
+  CalendarDays,
   Sun,
   Moon,
   LogOut,
@@ -15,6 +16,7 @@ const navItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutGrid, roles: ['admin', 'manager', 'jmanager', 'telecom', 'salesperson'] },
   { path: '/customers', label: 'Customers', icon: Users, roles: ['admin', 'manager', 'jmanager', 'telecom', 'salesperson'] },
   { path: '/followups', label: 'Follow Ups', icon: PhoneCall, roles: ['admin', 'manager', 'jmanager', 'telecom', 'salesperson'] },
+  { path: '/calendar', label: 'Calendar', icon: CalendarDays, roles: ['admin', 'manager', 'jmanager', 'telecom', 'salesperson'] },
   { path: '/team', label: 'Team', icon: UsersRound, roles: ['admin'] },
 ]
 
